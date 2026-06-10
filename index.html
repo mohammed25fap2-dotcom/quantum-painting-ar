@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>اللوحة المتراكبة - نموذج رصد كمي</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: white;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* يسمح باللمس من خلال الطبقة */
+        }
+        .ui-layer {
+            position: absolute;
+            bottom: 30px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            max-width: 300px;
+            text-align: center;
+            transition: background 0.3s;
+        }
+        .btn:active {
+            background: rgba(255, 255, 255, 0.4);
+        }
+        .btn-primary {
+            background: rgba(0, 122, 255, 0.6);
+            border-color: rgba(0, 122, 255, 0.8);
+        }
+        #status-text {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 16px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="video-container">
+        <video id="camera-feed" autoplay playsinline muted></video>
+        <canvas id="quantum-canvas"></canvas>
+        
+        <div id="status-text">في انتظار الرصد... اضغط "تفعيل الكاميرا" للبدء</div>
+
+        <div class="ui-layer">
+            <button id="start-btn" class="btn">تفعيل الكاميرا</button>
+            <button id="observe-btn" class="btn btn-primary hidden">ارصد اللوحة</button>
+            <button id="remove-btn" class="btn hidden">إزالة الطبقة الرقمية</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('camera-feed');
+        const canvas = document.getElementById('quantum-canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('start-btn');
+        const observeBtn = document.getElementById('observe-btn');
+        const removeBtn = document.getElementById('remove-btn');
+        const statusText = document.getElementById('status-text');
+
+        // ضبط أبعاد الـ Canvas لتطابق الشاشة
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 1. تفعيل الكاميرا
+        startBtn.addEventListener('click', async () => {
+            try {
+                statusText.innerText = "جارٍ طلب إذن الكاميرا...";
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "environment", // استخدام الكاميرا الخلفية في iPhone
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                video.srcObject = stream;
+                
+                startBtn.classList.add('hidden');
+                observeBtn.classList.remove('hidden');
+                statusText.innerText = "وجّه الكاميرا نحو اللوحة، ثم اضغط 'ارصد اللوحة'";
+            } catch (err) {
+                console.error("خطأ في الوصول للكاميرا:", err);
+                statusText.innerText = "تعذر الوصول للكاميرا. تأكد من منح الإذن وأن الموقع يستخدم HTTPS.";
+            }
+        });
+
+        // 2. رصد اللوحة (انهيار الدالة الموجية وتوليد حالة فريدة)
+        observeBtn.addEventListener('click', () => {
+            statusText.innerText = "انهيار الدالة الموجية... جارٍ توليد الحالة";
+            
+            // محاكاة تأخير بسيط للتأثير الدرامي
+            setTimeout(() => {
+                generateQuantumState();
+                observeBtn.classList.add('hidden');
+                removeBtn.classList.remove('hidden');
+                statusText.innerText = "تم الرصد: حالة كمية فريدة تم توليدها فوق اللوحة";
+            }, 800);
+        });
+
+        // 3. إزالة الطبقة الرقمية
+        removeBtn.addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            removeBtn.classList.add('hidden');
+            observeBtn.classList.remove('hidden');
+            statusText.innerText = "تمت إزالة الطبقة. جاهز لرصد جديد.";
+        });
+
+        // دالة توليد "حالة كمية" عشوائية (طبقة بصرية رقمية)
+        function generateQuantumState() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // توليد ألوان وأشكال عشوائية لمحاكاة "التراكب"
+            const colors = ['#00ffcc', '#ff00ff', '#ffff00', '#00ccff', '#ff3366'];
+            const numShapes = Math.floor(Math.random() * 15) + 10;
+            
+            for (let i = 0; i < numShapes; i++) {
+                ctx.beginPath();
+                ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)] + '66'; // شفافية
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const radius = Math.random() * 100 + 50;
+                
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // إضافة خطوط متداخلة
+                ctx.strokeStyle = colors[Math.floor(Math.random() * colors.length)] + '99';
+                ctx.lineWidth = 2;
+                ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
+                ctx.lineTo(Math.random() * canvas.width, Math.random() * canvas.height);
+                ctx.stroke();
+            }
+            
+            // إضافة نص الحالة
+            ctx.fillStyle = "white";
+            ctx.font = "bold 20px sans-serif";
+            ctx.textAlign = "center";
+            ctx.shadowColor = "black";
+            ctx.shadowBlur = 10;
+            ctx.fillText(`حالة كمبة مرصودة #${Math.floor(Math.random() * 9999)}`, canvas.width / 2, 100);
+        }
+    </script>
+</body>
+</html>
