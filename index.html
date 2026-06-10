@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>اللوحة المتراكبة - إعادة التشكيل الكمي</title>
+    <title>اللوحة المتراكبة - AI Reimagination</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -16,6 +16,10 @@
         canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
+        }
+        #ai-result {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; display: none; z-index: 5;
         }
         .ui-layer {
             position: absolute; bottom: 0; left: 0; width: 100%;
@@ -34,6 +38,7 @@
         .btn:active { background: rgba(255, 255, 255, 0.3); transform: scale(0.98); }
         .btn-primary { background: rgba(0, 122, 255, 0.7); border-color: #007aff; }
         .btn-primary:active { background: rgba(0, 122, 255, 0.9); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         #status-text {
             position: absolute; top: 20px; width: 100%; text-align: center;
@@ -43,18 +48,28 @@
         }
         .hidden { display: none !important; }
         
-        .effect-selector {
-            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-            margin-bottom: 10px;
+        .loading-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); display: none;
+            justify-content: center; align-items: center;
+            z-index: 100; flex-direction: column; padding: 20px;
         }
-        .effect-btn {
-            padding: 8px 16px; font-size: 14px; border-radius: 20px;
-            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);
-            color: white; cursor: pointer;
+        .spinner {
+            width: 60px; height: 60px; border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: #007aff; border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
         }
-        .effect-btn.active {
-            background: rgba(0, 122, 255, 0.6);
-            border-color: #007aff;
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text {
+            font-size: 18px; text-align: center; margin-bottom: 10px;
+        }
+        .loading-subtext {
+            font-size: 14px; opacity: 0.7; text-align: center;
+        }
+        .prompt-display {
+            margin-top: 20px; padding: 15px;
+            background: rgba(255,255,255,0.1); border-radius: 10px;
+            max-width: 90%; font-size: 14px;
         }
     </style>
 </head>
@@ -63,21 +78,20 @@
     <div id="video-container">
         <video id="camera-feed" autoplay playsinline muted></video>
         <canvas id="quantum-canvas"></canvas>
+        <img id="ai-result" alt="AI Generated">
         
         <div id="status-text">وجّه الكاميرا نحو اللوحة للبدء</div>
+        
+        <div class="loading-overlay" id="loading-overlay">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loading-text">جارٍ إرسال الصورة إلى AI...</div>
+            <div class="loading-subtext" id="loading-subtext">قد يستغرق 10-30 ثانية</div>
+            <div class="prompt-display" id="prompt-display"></div>
+        </div>
 
         <div class="ui-layer">
             <button id="start-btn" class="btn">تفعيل الكاميرا</button>
-            
-            <div id="effects-panel" class="hidden">
-                <div class="effect-selector">
-                    <button class="effect-btn active" data-effect="quantumDistortion">التشويه الكمي</button>
-                    <button class="effect-btn" data-effect="recompose">إعادة التشكيل</button>
-                    <button class="effect-btn" data-effect="motionShift">تغيير الحركة</button>
-                </div>
-            </div>
-            
-            <button id="observe-btn" class="btn btn-primary hidden">ارصد اللوحة</button>
+            <button id="observe-btn" class="btn btn-primary hidden">ارصد اللوحة (AI عشوائي)</button>
             <button id="reset-btn" class="btn hidden">رصد جديد</button>
         </div>
     </div>
@@ -86,16 +100,18 @@
         const video = document.getElementById('camera-feed');
         const canvas = document.getElementById('quantum-canvas');
         const ctx = canvas.getContext('2d');
+        const aiResult = document.getElementById('ai-result');
         const startBtn = document.getElementById('start-btn');
         const observeBtn = document.getElementById('observe-btn');
         const resetBtn = document.getElementById('reset-btn');
         const statusText = document.getElementById('status-text');
-        const effectsPanel = document.getElementById('effects-panel');
-        const effectBtns = document.querySelectorAll('.effect-btn');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        const loadingSubtext = document.getElementById('loading-subtext');
+        const promptDisplay = document.getElementById('prompt-display');
 
-        let selectedEffect = 'quantumDistortion';
         let animationId;
-        let turbulence, displacement;
+        let currentSeed = Math.floor(Math.random() * 1000000);
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -104,281 +120,147 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // إعداد SVG Filters للتشويه الكمي
-        function setupSVGFilters() {
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.style.position = 'absolute';
-            svg.style.width = '0';
-            svg.style.height = '0';
-            
-            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
-            filter.setAttribute('id', 'quantum-filter');
-            
-            turbulence = document.createElementNS('http://www.w3.org/2000/svg', 'feTurbulence');
-            turbulence.setAttribute('type', 'fractalNoise');
-            turbulence.setAttribute('baseFrequency', '0.01');
-            turbulence.setAttribute('numOctaves', '3');
-            turbulence.setAttribute('result', 'noise');
-            
-            displacement = document.createElementNS('http://www.w3.org/2000/svg', 'feDisplacementMap');
-            displacement.setAttribute('in', 'SourceGraphic');
-            displacement.setAttribute('in2', 'noise');
-            displacement.setAttribute('scale', '0');
-            displacement.setAttribute('xChannelSelector', 'R');
-            displacement.setAttribute('yChannelSelector', 'G');
-            
-            filter.appendChild(turbulence);
-            filter.appendChild(displacement);
-            defs.appendChild(filter);
-            svg.appendChild(defs);
-            document.body.appendChild(svg);
-            
-            canvas.style.filter = 'url(#quantum-filter)';
-        }
-
-        // اختيار التأثير
-        effectBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                effectBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                selectedEffect = btn.dataset.effect;
-            });
-        });
+        // برومبتات عشوائية لإعادة تخيل اللوحة
+        const randomPrompts = [
+            "reimagine this painting with horses running in different directions, dynamic motion, artistic style",
+            "transform this artwork into a surreal version with elements moving chaotically, dreamlike quality",
+            "reinterpret this painting with reversed movements, if standing make it jumping, if calm make it energetic",
+            "reimagine this scene with all elements in opposite states, happy becomes sad, still becomes moving",
+            "transform this painting into a cubist style with fragmented and rearranged elements",
+            "reinterpret this artwork with elements floating in zero gravity, surreal composition",
+            "reimagine this painting as if time is reversed, all movements going backwards",
+            "transform this scene into an impressionist style with swirling colors and dynamic brushstrokes",
+            "reinterpret this painting with elements scattered and reassembled in new positions",
+            "reimagine this artwork with dramatic lighting and elements in unexpected poses"
+        ];
 
         // 1. تفعيل الكاميرا
         startBtn.addEventListener('click', async () => {
             try {
                 statusText.innerText = "جارٍ تفعيل الكاميرا...";
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
+                    video: { 
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
                 });
                 video.srcObject = stream;
                 
-                setupSVGFilters();
                 startBtn.classList.add('hidden');
-                effectsPanel.classList.remove('hidden');
                 observeBtn.classList.remove('hidden');
                 statusText.innerText = "وجّه الكاميرا نحو اللوحة، ثم اضغط 'ارصد'";
             } catch (err) {
-                statusText.innerText = "خطأ: تأكد من استخدام HTTPS";
+                statusText.innerText = "خطأ: تأكد من استخدام HTTPS ومنح إذن الكاميرا";
                 console.error(err);
             }
         });
 
-        // 2. رصد اللوحة
-        observeBtn.addEventListener('click', () => {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            video.pause();
-            
-            observeBtn.classList.add('hidden');
-            effectsPanel.classList.add('hidden');
-            statusText.innerText = "⚛️ انهيار الدالة الموجية... جارٍ إعادة التشكيل";
-            
-            setTimeout(() => {
-                if (selectedEffect === 'quantumDistortion') {
-                    applyQuantumDistortion();
-                } else if (selectedEffect === 'recompose') {
-                    applyRecompose();
-                } else if (selectedEffect === 'motionShift') {
-                    applyMotionShift();
-                }
-            }, 100);
+        // 2. رصد اللوحة وإرسالها إلى AI
+        observeBtn.addEventListener('click', async () => {
+            try {
+                // تجميد اللقطة
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                video.pause();
+                
+                observeBtn.classList.add('hidden');
+                statusText.innerText = "️ انهيار الدالة الموجية... جارٍ إرسال الصورة إلى AI";
+                
+                // اختيار برومبت عشوائي
+                const randomPrompt = randomPrompts[Math.floor(Math.random() * randomPrompts.length)];
+                currentSeed = Math.floor(Math.random() * 1000000);
+                
+                // عرض شاشة التحميل
+                loadingOverlay.style.display = 'flex';
+                loadingText.innerText = "جارٍ إرسال الصورة إلى AI...";
+                loadingSubtext.innerText = "قد يستغرق 10-30 ثانية";
+                promptDisplay.innerText = `البرومبت: ${randomPrompt}`;
+                
+                // تحويل الصورة إلى Base64
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // إرسال إلى Pollinations.ai
+                await sendToAI(imageData, randomPrompt);
+                
+            } catch (err) {
+                console.error('خطأ:', err);
+                statusText.innerText = "حدث خطأ. حاول مرة أخرى.";
+                loadingOverlay.style.display = 'none';
+                observeBtn.classList.remove('hidden');
+                video.play();
+            }
         });
 
-        // تأثير 1: التشويه الكمي (الجميل!)
-        function applyQuantumDistortion() {
-            let startTime = null;
-            let frame = 0;
-            
-            function animate(timestamp) {
-                if (!startTime) startTime = timestamp;
-                const progress = (timestamp - startTime) / 2500;
+        // إرسال الصورة إلى Pollinations.ai
+        async function sendToAI(imageData, prompt) {
+            try {
+                loadingText.innerText = "جارٍ معالجة الصورة بالذكاء الاصطناعي...";
                 
-                if (progress < 0.4) {
-                    const intensity = progress / 0.4;
-                    displacement.setAttribute('scale', intensity * 120);
-                    turbulence.setAttribute('baseFrequency', 0.01 + (intensity * 0.08));
-                } else if (progress < 0.8) {
-                    const intensity = (progress - 0.4) / 0.4;
-                    displacement.setAttribute('scale', 120 - (intensity * 40));
-                    turbulence.setAttribute('baseFrequency', 0.09 - (intensity * 0.04));
-                } else {
-                    const intensity = (progress - 0.8) / 0.2;
-                    displacement.setAttribute('scale', 80 * (1 - intensity));
-                    turbulence.setAttribute('baseFrequency', 0.05 * (1 - intensity) + 0.01);
+                // Pollinations.ai يدعم Image-to-Image
+                // نرسل الصورة كـ base64 في الـ URL
+                const encodedImage = encodeURIComponent(imageData);
+                const encodedPrompt = encodeURIComponent(prompt);
+                
+                // استخدام Pollinations.ai API
+                const aiUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${canvas.width}&height=${canvas.height}&seed=${currentSeed}&nologo=true&model=flux`;
+                
+                // تحميل الصورة المولدة
+                const response = await fetch(aiUrl);
+                
+                if (!response.ok) {
+                    throw new Error('فشل في توليد الصورة');
                 }
                 
-                if (progress < 1) {
-                    requestAnimationFrame(animate);
-                } else {
-                    displacement.setAttribute('scale', 0);
-                    statusText.innerText = "✅ تم الرصد! تشويه كمي";
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+                
+                // عرض النتيجة
+                aiResult.src = imageUrl;
+                aiResult.style.display = 'block';
+                canvas.style.display = 'none';
+                
+                loadingOverlay.style.display = 'none';
+                statusText.innerText = "✅ تم الرصد! اللوحة أعيد تخيلها بالذكاء الاصطناعي";
+                resetBtn.classList.remove('hidden');
+                
+            } catch (err) {
+                console.error('خطأ في AI:', err);
+                
+                // إذا فشل Pollinations، جرب طريقة بديلة
+                loadingText.innerText = "محاولة طريقة بديلة...";
+                
+                try {
+                    // طريقة بديلة: استخدام seed مختلف
+                    const encodedPrompt = encodeURIComponent(prompt + " artistic reinterpretation");
+                    const aiUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${canvas.width}&height=${canvas.height}&seed=${currentSeed + 1}&nologo=true&model=flux-refined`;
+                    
+                    const response = await fetch(aiUrl);
+                    const blob = await response.blob();
+                    const imageUrl = URL.createObjectURL(blob);
+                    
+                    aiResult.src = imageUrl;
+                    aiResult.style.display = 'block';
+                    canvas.style.display = 'none';
+                    
+                    loadingOverlay.style.display = 'none';
+                    statusText.innerText = "✅ تم الرصد! اللوحة أعيد تخيلها";
                     resetBtn.classList.remove('hidden');
+                    
+                } catch (err2) {
+                    throw err2;
                 }
             }
-            requestAnimationFrame(animate);
-        }
-
-        // تأثير 2: إعادة التشكيل الفني
-        function applyRecompose() {
-            const width = canvas.width;
-            const height = canvas.height;
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const data = imageData.data;
-            
-            // إنشاء Canvas مؤقت
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            // تقسيم الصورة إلى مناطق
-            const regions = [];
-            const regionSize = 80;
-            
-            for (let y = 0; y < height; y += regionSize) {
-                for (let x = 0; x < width; x += regionSize) {
-                    // حساب "أهمية" المنطقة (التباين)
-                    let variance = 0;
-                    let count = 0;
-                    
-                    for (let ry = 0; ry < regionSize && y + ry < height; ry++) {
-                        for (let rx = 0; rx < regionSize && x + rx < width; rx++) {
-                            const idx = ((y + ry) * width + (x + rx)) * 4;
-                            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-                            variance += Math.abs(brightness - 128);
-                            count++;
-                        }
-                    }
-                    
-                    variance /= count;
-                    regions.push({ x, y, variance, originalX: x, originalY: y });
-                }
-            }
-            
-            // ترتيب المناطق حسب الأهمية
-            regions.sort((a, b) => b.variance - a.variance);
-            
-            // إعادة توزيع المناطق المهمة
-            const importantRegions = regions.slice(0, Math.floor(regions.length * 0.3));
-            const otherRegions = regions.slice(Math.floor(regions.length * 0.3));
-            
-            // خلط المناطق الأقل أهمية
-            otherRegions.sort(() => Math.random() - 0.5);
-            
-            const allRegions = [...importantRegions, ...otherRegions];
-            
-            // إعادة رسم الصورة
-            allRegions.forEach((region, index) => {
-                const newX = (index % Math.floor(width / regionSize)) * regionSize;
-                const newY = Math.floor(index / Math.floor(width / regionSize)) * regionSize;
-                
-                // إضافة تحول عشوائي بسيط
-                const offsetX = (Math.random() - 0.5) * 20;
-                const offsetY = (Math.random() - 0.5) * 20;
-                
-                // تدوير عشوائي طفيف
-                const rotation = (Math.random() - 0.5) * 0.2;
-                
-                tempCtx.save();
-                tempCtx.translate(newX + regionSize/2 + offsetX, newY + regionSize/2 + offsetY);
-                tempCtx.rotate(rotation);
-                tempCtx.translate(-regionSize/2, -regionSize/2);
-                
-                tempCtx.drawImage(
-                    canvas,
-                    region.x, region.y, regionSize, regionSize,
-                    0, 0, regionSize, regionSize
-                );
-                
-                tempCtx.restore();
-            });
-            
-            // تطبيق فلتر فني
-            tempCtx.globalCompositeOperation = 'overlay';
-            const gradient = tempCtx.createLinearGradient(0, 0, width, height);
-            gradient.addColorStop(0, `hsla(${Math.random() * 360}, 60%, 50%, 0.2)`);
-            gradient.addColorStop(1, `hsla(${Math.random() * 360}, 60%, 50%, 0.2)`);
-            tempCtx.fillStyle = gradient;
-            tempCtx.fillRect(0, 0, width, height);
-            
-            ctx.drawImage(tempCanvas, 0, 0);
-            
-            statusText.innerText = "✅ تم الرصد! إعادة تشكيل فني";
-            resetBtn.classList.remove('hidden');
-        }
-
-        // تأثير 3: تغيير الحركة (Motion Shift)
-        function applyMotionShift() {
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            // تطبيق motion blur في اتجاهات عشوائية
-            const directions = [
-                { x: 1, y: 0 },   // أفقي
-                { x: 0, y: 1 },   // عمودي
-                { x: 1, y: 1 },   // قطري
-                { x: -1, y: 1 },  // قطري معاكس
-            ];
-            
-            const dir = directions[Math.floor(Math.random() * directions.length)];
-            const blurAmount = 20 + Math.random() * 30;
-            
-            // رسم الصورة مع motion blur
-            for (let i = 0; i < blurAmount; i++) {
-                const alpha = 1 / blurAmount;
-                const offsetX = dir.x * i * 2;
-                const offsetY = dir.y * i * 2;
-                
-                tempCtx.globalAlpha = alpha;
-                tempCtx.drawImage(canvas, offsetX, offsetY);
-            }
-            
-            // إضافة خطوط حركة
-            tempCtx.globalAlpha = 0.3;
-            tempCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            tempCtx.lineWidth = 2;
-            
-            const lines = 10 + Math.random() * 20;
-            for (let i = 0; i < lines; i++) {
-                const startX = Math.random() * width;
-                const startY = Math.random() * height;
-                const length = 50 + Math.random() * 150;
-                
-                tempCtx.beginPath();
-                tempCtx.moveTo(startX, startY);
-                tempCtx.lineTo(
-                    startX + dir.x * length,
-                    startY + dir.y * length
-                );
-                tempCtx.stroke();
-            }
-            
-            // دمج مع الصورة الأصلية
-            ctx.globalCompositeOperation = 'screen';
-            ctx.globalAlpha = 0.6;
-            ctx.drawImage(tempCanvas, 0, 0);
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = 1;
-            
-            statusText.innerText = "✅ تم الرصد! تغيير في الحركة";
-            resetBtn.classList.remove('hidden');
         }
 
         // 3. إعادة التعيين
         resetBtn.addEventListener('click', () => {
+            aiResult.style.display = 'none';
+            aiResult.src = '';
+            canvas.style.display = 'block';
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            canvas.style.filter = 'none';
             video.play();
             resetBtn.classList.add('hidden');
             observeBtn.classList.remove('hidden');
-            effectsPanel.classList.remove('hidden');
             statusText.innerText = "جاهز لرصد جديد";
         });
     </script>
