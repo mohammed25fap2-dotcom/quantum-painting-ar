@@ -44,19 +44,6 @@
             font-weight: 500;
         }
         .hidden { display: none !important; }
-        
-        .loading-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); display: flex;
-            justify-content: center; align-items: center;
-            z-index: 100; flex-direction: column;
-        }
-        .spinner {
-            width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.3);
-            border-top-color: #007aff; border-radius: 50%;
-            animation: spin 1s linear infinite; margin-bottom: 20px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -65,7 +52,7 @@
         <video id="camera-feed" autoplay playsinline muted></video>
         <canvas id="quantum-canvas"></canvas>
         
-        <div id="status-text">وجّه الكاميرا نحو أي لوحة للبدء</div>
+        <div id="status-text">وجّه الكاميرا نحو اللوحة للبدء</div>
 
         <div class="ui-layer">
             <button id="start-btn" class="btn">تفعيل الكاميرا</button>
@@ -115,7 +102,7 @@
             }
         });
 
-        // 2. رصد اللوحة - إعادة تشكيل عشوائية
+        // 2. رصد اللوحة - اختيار عشوائي بين تأثيرين
         observeBtn.addEventListener('click', () => {
             try {
                 // تجميد اللقطة
@@ -128,21 +115,14 @@
                 observeBtn.classList.add('hidden');
                 statusText.innerText = "⚛️ انهيار الدالة الموجية... جارٍ إعادة التشكيل";
                 
-                // اختيار تأثير عشوائي
-                const effects = [
-                    'quantumReassembly',
-                    'geometricFracture',
-                    'waveReconstruction',
-                    'pixelQuantumLeap',
-                    'colorMorphogenesis',
-                    'turbulentFlow'
-                ];
-                
+                // اختيار عشوائي بين تأثيرين فقط:
+                // 1. التشويه الكمي (الجميل)
+                // 2. إعادة التشكيل العنصري (إعادة ترتيب العناصر)
+                const effects = ['quantumDistortion', 'elementReassembly'];
                 const randomEffect = effects[Math.floor(Math.random() * effects.length)];
                 
-                // تطبيق التأثير مع تأخير بسيط
                 setTimeout(() => {
-                    applyQuantumTransformation(randomEffect);
+                    applyTransformation(randomEffect);
                 }, 100);
                 
             } catch (err) {
@@ -153,30 +133,13 @@
             }
         });
 
-        // 3. تطبيق التحولات الكمية
-        function applyQuantumTransformation(effectType) {
+        // تطبيق التحول
+        function applyTransformation(effectType) {
             try {
-                switch(effectType) {
-                    case 'quantumReassembly':
-                        quantumReassembly();
-                        break;
-                    case 'geometricFracture':
-                        geometricFracture();
-                        break;
-                    case 'waveReconstruction':
-                        waveReconstruction();
-                        break;
-                    case 'pixelQuantumLeap':
-                        pixelQuantumLeap();
-                        break;
-                    case 'colorMorphogenesis':
-                        colorMorphogenesis();
-                        break;
-                    case 'turbulentFlow':
-                        turbulentFlow();
-                        break;
-                    default:
-                        quantumReassembly();
+                if (effectType === 'quantumDistortion') {
+                    applyQuantumDistortion();
+                } else if (effectType === 'elementReassembly') {
+                    applyElementReassembly();
                 }
             } catch (err) {
                 console.error('خطأ في تطبيق التأثير:', err);
@@ -185,134 +148,51 @@
             }
         }
 
-        // تأثير 1: إعادة التجميع الكمي - إعادة ترتيب العناصر
-        function quantumReassembly() {
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
+        // تأثير 1: التشويه الكمي (الجميل الذي أعجبك)
+        function applyQuantumDistortion() {
             const width = canvas.width;
             const height = canvas.height;
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
             
-            // تقسيم الصورة إلى كتل
-            const blockSize = 40;
-            const blocks = [];
+            let frame = 0;
+            const maxFrames = 60;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
             
-            for (let y = 0; y < height; y += blockSize) {
-                for (let x = 0; x < width; x += blockSize) {
-                    blocks.push({ x, y, originalX: x, originalY: y });
+            function animate() {
+                if (frame >= maxFrames) {
+                    // إضافة تأثير لوني نهائي
+                    ctx.globalCompositeOperation = 'overlay';
+                    const gradient = ctx.createRadialGradient(
+                        width/2, height/2, 0,
+                        width/2, height/2, width
+                    );
+                    gradient.addColorStop(0, `hsla(${Math.random() * 360}, 70%, 50%, 0.3)`);
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    statusText.innerText = "✅ تم الرصد! تشويه كمي";
+                    resetBtn.classList.remove('hidden');
+                    return;
                 }
-            }
-            
-            // خلط الكتل عشوائياً
-            blocks.sort(() => Math.random() - 0.5);
-            
-            // إعادة رسم الكتل في مواقع جديدة
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            blocks.forEach((block, index) => {
-                const newX = (index % Math.floor(width / blockSize)) * blockSize;
-                const newY = Math.floor(index / Math.floor(width / blockSize)) * blockSize;
                 
-                // إضافة بعض العشوائية للموقع
-                const offsetX = (Math.random() - 0.5) * blockSize * 0.5;
-                const offsetY = (Math.random() - 0.5) * blockSize * 0.5;
+                const progress = frame / maxFrames;
+                const intensity = Math.sin(progress * Math.PI) * 30;
+                const tempData = new Uint8ClampedArray(data);
                 
-                tempCtx.drawImage(
-                    canvas,
-                    block.x, block.y, blockSize, blockSize,
-                    newX + offsetX, newY + offsetY, blockSize, blockSize
-                );
-            });
-            
-            // تطبيق فلتر لوني
-            tempCtx.globalCompositeOperation = 'overlay';
-            tempCtx.fillStyle = `hsl(${Math.random() * 360}, 70%, 50%)`;
-            tempCtx.globalAlpha = 0.3;
-            tempCtx.fillRect(0, 0, width, height);
-            
-            ctx.drawImage(tempCanvas, 0, 0);
-            
-            statusText.innerText = "✅ تم الرصد! إعادة تجميع كمي للعناصر";
-            resetBtn.classList.remove('hidden');
-        }
-
-        // تأثير 2: التصدع الهندسي - تحويلات هندسية
-        function geometricFracture() {
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            const triangles = 30;
-            
-            for (let i = 0; i < triangles; i++) {
-                const x1 = Math.random() * width;
-                const y1 = Math.random() * height;
-                const x2 = Math.random() * width;
-                const y2 = Math.random() * height;
-                const x3 = Math.random() * width;
-                const y3 = Math.random() * height;
-                
-                // أخذ جزء من الصورة الأصلية
-                const sourceX = Math.random() * (width - 100);
-                const sourceY = Math.random() * (height - 100);
-                const sourceSize = 100 + Math.random() * 150;
-                
-                tempCtx.save();
-                tempCtx.beginPath();
-                tempCtx.moveTo(x1, y1);
-                tempCtx.lineTo(x2, y2);
-                tempCtx.lineTo(x3, y3);
-                tempCtx.closePath();
-                tempCtx.clip();
-                
-                tempCtx.drawImage(
-                    canvas,
-                    sourceX, sourceY, sourceSize, sourceSize,
-                    x1 - 50, y1 - 50, sourceSize + 100, sourceSize + 100
-                );
-                
-                // إضافة حدود مضيئة
-                tempCtx.strokeStyle = `hsla(${Math.random() * 360}, 80%, 60%, 0.6)`;
-                tempCtx.lineWidth = 2;
-                tempCtx.stroke();
-                
-                tempCtx.restore();
-            }
-            
-            ctx.drawImage(tempCanvas, 0, 0);
-            
-            statusText.innerText = "✅ تم الرصد! تصدع هندسي وإعادة تشكيل";
-            resetBtn.classList.remove('hidden');
-        }
-
-        // تأثير 3: إعادة البناء الموجي
-        function waveReconstruction() {
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            const tempData = new Uint8ClampedArray(data);
-            
-            const waves = 3;
-            for (let w = 0; w < waves; w++) {
-                const amplitude = 20 + Math.random() * 30;
-                const frequency = 0.01 + Math.random() * 0.02;
-                const phase = Math.random() * Math.PI * 2;
-                
-                for (let y = 0; y < height; y++) {
+                for (let y = 0; y < height; y += 2) {
                     for (let x = 0; x < width; x++) {
-                        const offsetX = Math.sin(y * frequency + phase) * amplitude;
-                        const newX = Math.floor(x + offsetX);
+                        const offsetX = Math.sin((y + frame * 5) * 0.01) * intensity;
+                        const offsetY = Math.cos((x + frame * 5) * 0.01) * intensity * 0.5;
+                        const srcX = Math.floor(x + offsetX);
+                        const srcY = Math.floor(y + offsetY);
                         
-                        if (newX >= 0 && newX < width) {
-                            const srcIdx = (y * width + newX) * 4;
+                        if (srcX >= 0 && srcX < width && srcY >= 0 && srcY < height) {
+                            const srcIdx = (srcY * width + srcX) * 4;
                             const dstIdx = (y * width + x) * 4;
                             
                             data[dstIdx] = tempData[srcIdx];
@@ -321,186 +201,134 @@
                         }
                     }
                 }
+                
+                ctx.putImageData(imageData, 0, 0);
+                frame++;
+                requestAnimationFrame(animate);
             }
-            
-            ctx.putImageData(imageData, 0, 0);
-            
-            // إضافة طبقة لونية
-            ctx.globalCompositeOperation = 'soft-light';
-            const gradient = ctx.createLinearGradient(0, 0, width, height);
-            gradient.addColorStop(0, `hsla(${Math.random() * 360}, 70%, 50%, 0.4)`);
-            gradient.addColorStop(1, `hsla(${Math.random() * 360}, 70%, 50%, 0.4)`);
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, width, height);
-            
-            statusText.innerText = "✅ تم الرصد! إعادة بناء موجي";
-            resetBtn.classList.remove('hidden');
+            animate();
         }
 
-        // تأثير 4: القفزة الكمية للبكسل
-        function pixelQuantumLeap() {
+        // تأثير 2: إعادة التشكيل العنصري (إعادة ترتيب العناصر)
+        function applyElementReassembly() {
             const width = canvas.width;
             const height = canvas.height;
             
+            // تقسيم الصورة إلى عناصر/كتل كبيرة
+            const numElements = 6 + Math.floor(Math.random() * 4); // 6-9 عناصر
+            const elements = [];
+            
+            // إنشاء عناصر بأحجام مختلفة
+            for (let i = 0; i < numElements; i++) {
+                const elemWidth = width / (3 + Math.floor(Math.random() * 2)); // عرض متغير
+                const elemHeight = height / (2 + Math.floor(Math.random() * 2)); // ارتفاع متغير
+                
+                elements.push({
+                    x: Math.random() * (width - elemWidth),
+                    y: Math.random() * (height - elemHeight),
+                    width: elemWidth,
+                    height: elemHeight,
+                    originalX: 0,
+                    originalY: 0
+                });
+            }
+            
+            // ترتيب العناصر في مواقعها الأصلية (شبكة)
+            let index = 0;
+            const cols = Math.ceil(Math.sqrt(numElements));
+            const rows = Math.ceil(numElements / cols);
+            const cellWidth = width / cols;
+            const cellHeight = height / rows;
+            
+            for (let row = 0; row < rows && index < numElements; row++) {
+                for (let col = 0; col < cols && index < numElements; col++) {
+                    elements[index].originalX = col * cellWidth;
+                    elements[index].originalY = row * cellHeight;
+                    elements[index].newX = elements[index].originalX;
+                    elements[index].newY = elements[index].originalY;
+                    index++;
+                }
+            }
+            
+            // خلط العناصر عشوائياً (إعادة ترتيب)
+            elements.sort(() => Math.random() - 0.5);
+            
+            // تعيين مواقع جديدة
+            for (let i = 0; i < elements.length; i++) {
+                const row = Math.floor(i / cols);
+                const col = i % cols;
+                elements[i].targetX = col * cellWidth + (Math.random() - 0.5) * cellWidth * 0.3;
+                elements[i].targetY = row * cellHeight + (Math.random() - 0.5) * cellHeight * 0.3;
+                elements[i].scale = 0.8 + Math.random() * 0.4; // تغيير حجم طفيف
+                elements[i].rotation = (Math.random() - 0.5) * 0.3; // دوران طفيف
+            }
+            
+            // إنشاء كانفاس مؤقت للرسم
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = width;
             tempCanvas.height = height;
             const tempCtx = tempCanvas.getContext('2d');
             
-            const particles = 500;
+            // ملء الخلفية بلون متوسط من الصورة
+            tempCtx.fillStyle = '#8B8B7B';
+            tempCtx.fillRect(0, 0, width, height);
             
-            for (let i = 0; i < particles; i++) {
-                const srcX = Math.random() * width;
-                const srcY = Math.random() * height;
-                const size = 5 + Math.random() * 15;
+            // رسم العناصر في مواقعها الجديدة
+            elements.forEach((elem, i) => {
+                // قص العنصر من الصورة الأصلية
+                const elemCanvas = document.createElement('canvas');
+                elemCanvas.width = elem.width;
+                elemCanvas.height = elem.height;
+                const elemCtx = elemCanvas.getContext('2d');
                 
-                const dstX = srcX + (Math.random() - 0.5) * 100;
-                const dstY = srcY + (Math.random() - 0.5) * 100;
+                elemCtx.drawImage(
+                    canvas,
+                    elem.x, elem.y, elem.width, elem.height,
+                    0, 0, elem.width, elem.height
+                );
                 
-                const pixelData = ctx.getImageData(srcX, srcY, size, size);
-                tempCtx.putImageData(pixelData, dstX, dstY);
-            }
-            
-            // دمج مع الصورة الأصلية
-            ctx.globalAlpha = 0.7;
-            ctx.drawImage(canvas, 0, 0);
-            ctx.globalAlpha = 1;
-            ctx.drawImage(tempCanvas, 0, 0);
-            
-            statusText.innerText = "✅ تم الرصد! قفزة كمية للبكسلات";
-            resetBtn.classList.remove('hidden');
-        }
-
-        // تأثير 5: التشكّل اللوني
-        function colorMorphogenesis() {
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            
-            const hueShift = Math.random() * 360;
-            const saturationBoost = 0.5 + Math.random() * 1;
-            const lightnessShift = (Math.random() - 0.5) * 40;
-            
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                
-                // تحويل RGB إلى HSL
-                const hsl = rgbToHsl(r, g, b);
-                
-                // تعديل الألوان
-                hsl.h = (hsl.h + hueShift) % 360;
-                hsl.s = Math.min(1, hsl.s * saturationBoost);
-                hsl.l = Math.max(0, Math.min(1, hsl.l + lightnessShift / 100));
-                
-                // تحويل обратно إلى RGB
-                const rgb = hslToRgb(hsl.h, hsl.s, hsl.l);
-                
-                data[i] = rgb[0];
-                data[i + 1] = rgb[1];
-                data[i + 2] = rgb[2];
-            }
-            
-            ctx.putImageData(imageData, 0, 0);
-            
-            statusText.innerText = "✅ تم الرصد! تشكّل لوني جديد";
-            resetBtn.classList.remove('hidden');
-        }
-
-        // تأثير 6: الجريان المضطرب
-        function turbulentFlow() {
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            const streams = 20;
-            
-            for (let s = 0; s < streams; s++) {
-                const startX = Math.random() * width;
-                const startY = Math.random() * height;
-                const streamLength = 50 + Math.random() * 100;
-                
+                // رسم العنصر في الموقع الجديد مع تحويلات
                 tempCtx.save();
-                tempCtx.beginPath();
-                tempCtx.moveTo(startX, startY);
-                
-                let currentX = startX;
-                let currentY = startY;
-                
-                for (let i = 0; i < streamLength; i++) {
-                    currentX += (Math.random() - 0.5) * 20;
-                    currentY += (Math.random() - 0.5) * 20;
-                    tempCtx.lineTo(currentX, currentY);
-                }
-                
-                tempCtx.lineWidth = 10 + Math.random() * 30;
-                tempCtx.strokeStyle = `hsla(${Math.random() * 360}, 70%, 60%, 0.3)`;
-                tempCtx.lineCap = 'round';
-                tempCtx.stroke();
+                tempCtx.translate(
+                    elem.targetX + elem.width / 2,
+                    elem.targetY + elem.height / 2
+                );
+                tempCtx.rotate(elem.rotation);
+                tempCtx.scale(elem.scale, elem.scale);
+                tempCtx.drawImage(
+                    elemCanvas,
+                    -elem.width / 2,
+                    -elem.height / 2
+                );
                 tempCtx.restore();
-            }
+            });
             
-            // دمج مع الصورة الأصلية
-            ctx.globalCompositeOperation = 'overlay';
-            ctx.globalAlpha = 0.6;
-            ctx.drawImage(tempCanvas, 0, 0);
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = 1;
+            // إضافة تأثير انتقالي
+            ctx.globalAlpha = 0;
+            let alpha = 0;
             
-            statusText.innerText = "✅ تم الرصد! جريان مضطرب للعناصر";
-            resetBtn.classList.remove('hidden');
-        }
-
-        // دوال مساعدة لتحويل الألوان
-        function rgbToHsl(r, g, b) {
-            r /= 255; g /= 255; b /= 255;
-            const max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let h, s, l = (max + min) / 2;
-
-            if (max === min) {
-                h = s = 0;
-            } else {
-                const d = max - min;
-                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                switch (max) {
-                    case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-                    case g: h = ((b - r) / d + 2) / 6; break;
-                    case b: h = ((r - g) / d + 4) / 6; break;
+            function fadeIn() {
+                if (alpha >= 1) {
+                    ctx.globalAlpha = 1;
+                    statusText.innerText = "✅ تم الرصد! إعادة تشكيل العناصر";
+                    resetBtn.classList.remove('hidden');
+                    return;
                 }
+                
+                alpha += 0.05;
+                ctx.globalAlpha = alpha;
+                ctx.drawImage(tempCanvas, 0, 0);
+                requestAnimationFrame(fadeIn);
             }
-            return { h: h * 360, s, l };
+            
+            fadeIn();
         }
 
-        function hslToRgb(h, s, l) {
-            h /= 360;
-            let r, g, b;
-            if (s === 0) {
-                r = g = b = l;
-            } else {
-                const hue2rgb = (p, q, t) => {
-                    if (t < 0) t += 1;
-                    if (t > 1) t -= 1;
-                    if (t < 1/6) return p + (q - p) * 6 * t;
-                    if (t < 1/2) return q;
-                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-                    return p;
-                };
-                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-                const p = 2 * l - q;
-                r = hue2rgb(p, q, h + 1/3);
-                g = hue2rgb(p, q, h);
-                b = hue2rgb(p, q, h - 1/3);
-            }
-            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-        }
-
-        // 4. إعادة التعيين
+        // 3. إعادة التعيين
         resetBtn.addEventListener('click', () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1;
             video.play();
             resetBtn.classList.add('hidden');
             observeBtn.classList.remove('hidden');
