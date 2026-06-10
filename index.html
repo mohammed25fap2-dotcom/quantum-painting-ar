@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>اللوحة المتراكبة - إعادة التشكيل الكمي</title>
+    <title>اللوحة المتراكبة - التشكيل الكمي العشوائي</title>
+    
+    <!-- TensorFlow.js و Face API للكشف عن الوجوه -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@latest"></script>
+    
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -12,12 +17,13 @@
             color: white;
         }
         #video-container { position: relative; width: 100%; height: 100%; }
-        video { width: 100%; height: 100%; object-fit: cover; }
+        video { 
+            width: 100%; height: 100%; object-fit: cover;
+            transform: scaleX(-1); /* عكس الصورة كالمِرآة */
+        }
         canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
-            /* تطبيق الفلتر الكمي على الكانفاس */
-            filter: url(#quantum-filter);
         }
         .ui-layer {
             position: absolute; bottom: 0; left: 0; width: 100%;
@@ -43,42 +49,41 @@
             z-index: 10; padding: 0 20px; box-sizing: border-box;
             font-weight: 500;
         }
-        .quantum-input {
-            width: 100%; max-width: 320px; padding: 12px 16px;
-            border-radius: 20px; border: 1px solid rgba(255,255,255,0.4);
-            background: rgba(0,0,0,0.6); color: white; font-size: 15px;
-            text-align: center; outline: none;
-        }
-        .quantum-input::placeholder { color: rgba(255,255,255,0.6); }
         .hidden { display: none !important; }
+        
+        #loading-models {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center; z-index: 20;
+            background: rgba(0,0,0,0.8); padding: 30px;
+            border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: #007aff; border-radius: 50%;
+            animation: spin 1s linear infinite; margin: 0 auto 15px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-
-    <!-- تعريف الفلتر الكمي (SVG) -->
-    <svg width="0" height="0" style="position:absolute;">
-        <defs>
-            <filter id="quantum-filter">
-                <feTurbulence type="fractalNoise" baseFrequency="0.01" numOctaves="3" result="noise" />
-                <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G" />
-            </filter>
-        </defs>
-    </svg>
 
     <div id="video-container">
         <video id="camera-feed" autoplay playsinline muted></video>
         <canvas id="quantum-canvas"></canvas>
         
-        <div id="status-text">وجّه الكاميرا نحو اللوحة للبدء</div>
+        <div id="status-text">وجّه الكاميرا نحو اللوحة أو الوجه للبدء</div>
+        
+        <div id="loading-models" class="hidden">
+            <div class="spinner"></div>
+            <div>جارٍ تحميل نماذج الذكاء الاصطناعي...</div>
+            <div style="font-size: 12px; margin-top: 10px; opacity: 0.7;">قد يستغرق بضع ثوانٍ</div>
+        </div>
 
         <div class="ui-layer">
             <button id="start-btn" class="btn">تفعيل الكاميرا</button>
-            
-            <input type="text" id="quantum-prompt" class="quantum-input hidden" 
-                   placeholder="كيف تتغير اللوحة؟ (مثال: اجعل الحصان يركض)">
-            
-            <button id="observe-btn" class="btn btn-primary hidden">ارصد اللوحة (انهيار كمي)</button>
-            <button id="reset-btn" class="btn hidden">رصد لوحة جديدة</button>
+            <button id="observe-btn" class="btn btn-primary hidden">ارصد اللوحة (تغيير عشوائي)</button>
+            <button id="reset-btn" class="btn hidden">رصد جديد</button>
         </div>
     </div>
 
@@ -90,13 +95,11 @@
         const observeBtn = document.getElementById('observe-btn');
         const resetBtn = document.getElementById('reset-btn');
         const statusText = document.getElementById('status-text');
-        const promptInput = document.getElementById('quantum-prompt');
-        
-        const turbulence = document.querySelector('#quantum-filter feTurbulence');
-        const displacement = document.querySelector('#quantum-filter feDisplacementMap');
+        const loadingModels = document.getElementById('loading-models');
 
+        let modelsLoaded = false;
+        let faceDetected = false;
         let animationId;
-        let startTime;
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -105,7 +108,24 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // 1. تفعيل الكاميرا (متوافق مع iPhone)
+        // تحميل نماذج Face API
+        async function loadModels() {
+            loadingModels.classList.remove('hidden');
+            try {
+                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@0.0.3/src/mediapipe_model';
+                await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights');
+                await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights');
+                modelsLoaded = true;
+                loadingModels.classList.add('hidden');
+            } catch (err) {
+                console.error('خطأ في تحميل النماذج:', err);
+                statusText.innerText = "تحذير: بعض الميزات قد لا تعمل بدون النماذج";
+                loadingModels.classList.add('hidden');
+                modelsLoaded = true; // الاستمرار حتى بدون نماذج
+            }
+        }
+
+        // 1. تفعيل الكاميرا
         startBtn.addEventListener('click', async () => {
             try {
                 statusText.innerText = "جارٍ طلب إذن الكاميرا...";
@@ -114,73 +134,262 @@
                 });
                 video.srcObject = stream;
                 
+                // تحميل النماذج في الخلفية
+                loadModels();
+                
                 startBtn.classList.add('hidden');
                 observeBtn.classList.remove('hidden');
-                promptInput.classList.remove('hidden');
-                statusText.innerText = "وجّه الكاميرا نحو اللوحة، واكتب القصة الجديدة";
+                statusText.innerText = "وجّه الكاميرا نحو لوحة أو وجه، ثم اضغط 'ارصد'";
             } catch (err) {
                 statusText.innerText = "تعذر الوصول للكاميرا. تأكد من استخدام HTTPS.";
             }
         });
 
-        // 2. رصد اللوحة وتطبيق التشوه الكمي
-        observeBtn.addEventListener('click', () => {
-            const userStory = promptInput.value.trim() || "تغيير الحالة الكمية";
-            
-            // تجميد اللقطة الحالية من الكاميرا على الكانفاس
+        // 2. رصد اللوحة - تغيير عشوائي
+        observeBtn.addEventListener('click', async () => {
+            // تجميد اللقطة
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            video.pause(); // إيقاف الفيديو
+            video.pause();
             
             observeBtn.classList.add('hidden');
-            promptInput.classList.add('hidden');
-            statusText.innerText = `⚛️ انهيار الدالة الموجية... جارٍ إعادة تشكيل: "${userStory}"`;
+            statusText.innerText = "⚛️ انهيار الدالة الموجية... جارٍ التشكيل العشوائي";
             
-            // بدء أنيميشن التشوه الكمي
-            startTime = null;
-            animationId = requestAnimationFrame(animateQuantumCollapse);
-        });
-
-        // دالة الأنيميشن (تفكك ثم إعادة تشكيل)
-        function animateQuantumCollapse(timestamp) {
-            if (!startTime) startTime = timestamp;
-            const progress = (timestamp - startTime) / 2500; // 2.5 ثانية
-            
-            if (progress < 0.4) {
-                // المرحلة الأولى: التفكك والذوبان
-                const intensity = progress / 0.4;
-                displacement.setAttribute('scale', intensity * 120);
-                turbulence.setAttribute('baseFrequency', 0.01 + (intensity * 0.08));
-            } else if (progress < 0.8) {
-                // المرحلة الثانية: الفوضى الكمية
-                const intensity = (progress - 0.4) / 0.4;
-                displacement.setAttribute('scale', 120 - (intensity * 40));
-                turbulence.setAttribute('baseFrequency', 0.09 - (intensity * 0.04));
+            // الكشف عن الوجوه
+            if (modelsLoaded) {
+                const detections = await faceapi.detectAllFaces(
+                    canvas, 
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 })
+                ).withFaceLandmarks();
+                
+                faceDetected = detections.length > 0;
             } else {
-                // المرحلة الثالثة: الاستقرار في الحالة الجديدة
-                const intensity = (progress - 0.8) / 0.2;
-                displacement.setAttribute('scale', 80 * (1 - intensity));
-                turbulence.setAttribute('baseFrequency', 0.05 * (1 - intensity) + 0.01);
+                faceDetected = false;
             }
             
-            if (progress < 1) {
-                animationId = requestAnimationFrame(animateQuantumCollapse);
-            } else {
-                // انتهاء التأثير
-                displacement.setAttribute('scale', 0);
-                statusText.innerText = `✅ تم الرصد: اللوحة الآن في حالة "${promptInput.value || 'جديدة'}"`;
+            // اختيار تأثير عشوائي
+            const effects = [
+                'quantumDistortion',
+                'faceMorphHappy',
+                'faceMorphSurprised', 
+                'pixelGlitch',
+                'waveDistortion',
+                'colorShift'
+            ];
+            
+            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
+            
+            // تطبيق التأثير
+            setTimeout(() => {
+                applyQuantumEffect(randomEffect);
+                statusText.innerText = `✅ تم الرصد! الحالة الجديدة: ${getEffectName(randomEffect)}`;
                 resetBtn.classList.remove('hidden');
+            }, 500);
+        });
+
+        function getEffectName(effect) {
+            const names = {
+                'quantumDistortion': 'تشوه كمي',
+                'faceMorphHappy': 'تعبير مرح',
+                'faceMorphSurprised': 'تعبير مفاجئ',
+                'pixelGlitch': 'تشويش رقمي',
+                'waveDistortion': 'تموج موجي',
+                'colorShift': 'انزياح لوني'
+            };
+            return names[effect] || effect;
+        }
+
+        // 3. تطبيق التأثيرات الكمية
+        function applyQuantumEffect(effectType) {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            if (effectType === 'quantumDistortion') {
+                // تأثير التشوه الكمي المتقدم
+                applyQuantumDistortion();
+            } else if ((effectType === 'faceMorphHappy' || effectType === 'faceMorphSurprised') && faceDetected) {
+                // تعديل تعبير الوجه
+                applyFaceMorphing(effectType);
+            } else if (effectType === 'pixelGlitch') {
+                // تأثير التشويش الرقمي
+                applyPixelGlitch(data);
+            } else if (effectType === 'waveDistortion') {
+                // التموج الموجي
+                applyWaveDistortion();
+            } else if (effectType === 'colorShift') {
+                // الانزياح اللوني
+                applyColorShift(data);
+            } else {
+                // تأثير افتراضي
+                applyQuantumDistortion();
             }
         }
 
-        // 3. إعادة التعيين
+        function applyQuantumDistortion() {
+            let frame = 0;
+            const maxFrames = 60;
+            
+            function animate() {
+                if (frame >= maxFrames) {
+                    ctx.putImageData(ctx.getImageData(0, 0, canvas.width, canvas.height), 0, 0);
+                    return;
+                }
+                
+                const intensity = Math.sin(frame / 10) * 20;
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                for (let y = 0; y < canvas.height; y += 4) {
+                    for (let x = 0; x < canvas.width; x++) {
+                        const offset = Math.sin((y + frame * 5) * 0.01) * intensity;
+                        const srcX = Math.floor(x + offset);
+                        
+                        if (srcX >= 0 && srcX < canvas.width) {
+                            const srcIdx = (y * canvas.width + srcX) * 4;
+                            const dstIdx = (y * canvas.width + x) * 4;
+                            
+                            imageData.data[dstIdx] = imageData.data[srcIdx];
+                            imageData.data[dstIdx + 1] = imageData.data[srcIdx + 1];
+                            imageData.data[dstIdx + 2] = imageData.data[srcIdx + 2];
+                        }
+                    }
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+                frame++;
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        function applyFaceMorphing(morphType) {
+            // محاكاة تغيير تعبير الوجه (في الواقع يحتاج نموذج AI متقدم)
+            // هنا نطبق تأثيرات بصرية توحي بالتغيير
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // زيادة السطوع في منطقة الفم (محاكاة للابتسامة)
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2 + 100;
+            const mouthRadius = 80;
+            
+            for (let y = 0; y < canvas.height; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                    const dx = x - centerX;
+                    const dy = y - centerY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < mouthRadius) {
+                        const idx = (y * canvas.width + x) * 4;
+                        const factor = morphType === 'faceMorphHappy' ? 1.3 : 0.7;
+                        
+                        data[idx] = Math.min(255, data[idx] * factor);
+                        data[idx + 1] = Math.min(255, data[idx + 1] * factor);
+                        data[idx + 2] = Math.min(255, data[idx + 2] * factor);
+                    }
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            // إضافة تأثيرات بصرية إضافية
+            addExpressionOverlay(morphType);
+        }
+
+        function addExpressionOverlay(morphType) {
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            
+            if (morphType === 'faceMorphHappy') {
+                // رسم ابتسامة مضيئة
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, canvas.height / 2 + 100, 60, 0.2, Math.PI - 0.2);
+                ctx.stroke();
+            } else {
+                // رسم عيون متسعة
+                ctx.fillStyle = '#00FFFF';
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2 - 50, canvas.height / 2 - 20, 20, 0, Math.PI * 2);
+                ctx.arc(canvas.width / 2 + 50, canvas.height / 2 - 20, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+
+        function applyPixelGlitch(data) {
+            const glitchBlocks = 20;
+            const blockHeight = Math.floor(canvas.height / glitchBlocks);
+            
+            for (let i = 0; i < glitchBlocks; i++) {
+                if (Math.random() > 0.5) {
+                    const offset = Math.floor((Math.random() - 0.5) * 50);
+                    const startY = i * blockHeight;
+                    
+                    for (let y = startY; y < startY + blockHeight && y < canvas.height; y++) {
+                        for (let x = 0; x < canvas.width; x++) {
+                            const srcX = x + offset;
+                            if (srcX >= 0 && srcX < canvas.width) {
+                                const srcIdx = (y * canvas.width + srcX) * 4;
+                                const dstIdx = (y * canvas.width + x) * 4;
+                                
+                                data[dstIdx] = data[srcIdx];
+                                data[dstIdx + 1] = data[srcIdx + 1];
+                                data[dstIdx + 2] = data[srcIdx + 2];
+                            }
+                        }
+                    }
+                }
+            }
+            
+            ctx.putImageData(new ImageData(data, canvas.width, canvas.height), 0, 0);
+        }
+
+        function applyWaveDistortion() {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const tempData = new Uint8ClampedArray(imageData.data);
+            
+            for (let y = 0; y < canvas.height; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                    const offsetX = Math.sin(y * 0.05) * 20;
+                    const srcX = Math.floor(x + offsetX);
+                    
+                    if (srcX >= 0 && srcX < canvas.width) {
+                        const srcIdx = (y * canvas.width + srcX) * 4;
+                        const dstIdx = (y * canvas.width + x) * 4;
+                        
+                        imageData.data[dstIdx] = tempData[srcIdx];
+                        imageData.data[dstIdx + 1] = tempData[srcIdx + 1];
+                        imageData.data[dstIdx + 2] = tempData[srcIdx + 2];
+                    }
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function applyColorShift(data) {
+            const shift = 30;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                data[i] = Math.min(255, r + shift);
+                data[i + 1] = Math.min(255, g - shift);
+                data[i + 2] = Math.min(255, b + shift * 2);
+            }
+            ctx.putImageData(new ImageData(data, canvas.width, canvas.height), 0, 0);
+        }
+
+        // 4. إعادة التعيين
         resetBtn.addEventListener('click', () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             video.play();
             resetBtn.classList.add('hidden');
             observeBtn.classList.remove('hidden');
-            promptInput.classList.remove('hidden');
-            promptInput.value = '';
-            statusText.innerText = "جاهز لرصد جديد. وجّه الكاميرا واكتب القصة";
+            statusText.innerText = "جاهز لرصد جديد. التغيير سيكون عشوائياً!";
         });
     </script>
 </body>
