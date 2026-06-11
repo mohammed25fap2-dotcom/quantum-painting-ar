@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>اللوحة المتراكبة</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --gold: #c9a84c;
+    --gold-dim: rgba(201,168,76,0.15);
+    --text: #e8e4d8;
+    --text-dim: #7a7668;
+    --red: #8b3a3a;
+    --blue: #2a4a6b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Tajawal', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+  }
+
+  .logo-mark {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+
+  .logo-mark circle {
+    animation: pulse-ring 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0%, 100% { opacity: 0.3; r: 14; }
+    50% { opacity: 0.8; r: 16; }
+  }
+
+  .title-block h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--gold);
+  }
+
+  .title-block p {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    font-weight: 300;
+    letter-spacing: 0.06em;
+  }
+
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    gap: 16px;
+    max-width: 480px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* Camera viewport */
+  .viewport {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  #videoEl {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  #overlayCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .scan-line {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(201,168,76,0.06) 50%,
+      transparent 100%
+    );
+    animation: scan 3s linear infinite;
+    pointer-events: none;
+    display: none;
+  }
+
+  @keyframes scan {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+  }
+
+  .viewport.scanning .scan-line { display: block; }
+
+  .corner {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: var(--gold);
+    border-style: solid;
+    opacity: 0.6;
+  }
+  .corner.tl { top: 10px; right: 10px; border-width: 2px 0 0 2px; border-radius: 0 0 0 4px; }
+  .corner.tr { top: 10px; left: 10px; border-width: 2px 2px 0 0; border-radius: 0 0 4px 0; }
+  .corner.bl { bottom: 10px; right: 10px; border-width: 0 0 2px 2px; border-radius: 4px 0 0 0; }
+  .corner.br { bottom: 10px; left: 10px; border-width: 0 2px 2px 0; border-radius: 0 4px 0 0; }
+
+  .state-badge {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.7);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  /* Placeholder when no camera */
+  .no-camera {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--text-dim);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .no-camera svg { opacity: 0.3; }
+
+  /* Overlay result */
+  .overlay-result {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.0);
+    transition: background 0.5s;
+    pointer-events: none;
+  }
+
+  .overlay-result.active {
+    background: rgba(0,0,0,0.3);
+  }
+
+  .overlay-image-container {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+  }
+
+  .overlay-image-container.visible { opacity: 1; }
+
+  .generated-overlay {
+    max-width: 85%;
+    max-height: 85%;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(201,168,76,0.3);
+    object-fit: contain;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .btn-primary {
+    width: 100%;
+    padding: 16px;
+    background: var(--gold);
+    color: #0a0a0f;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Tajawal', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.02em;
+  }
+
+  .btn-primary:hover { background: #d4b55a; transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled {
+    background: var(--border);
+    color: var(--text-dim);
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-secondary {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: 'Tajawal', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
+
+  /* Observation counter */
+  .meta-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .meta-card {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+
+  .meta-card .val {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meta-card .lbl {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    letter-spacing: 0.04em;
+  }
+
+  /* State info */
+  .state-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    display: none;
+  }
+
+  .state-panel.visible { display: block; }
+
+  .state-panel .state-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .state-panel .state-seed {
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--gold);
+    opacity: 0.7;
+    margin-top: 8px;
+    direction: ltr;
+    text-align: left;
+  }
+
+  /* Loading */
+  .loading-indicator {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--gold-dim);
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--gold);
+  }
+
+  .loading-indicator.visible { display: flex; }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(201,168,76,0.3);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Description area */
+  .desc-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: none;
+  }
+
+  .desc-panel.visible { display: block; }
+
+  .desc-panel .desc-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+
+  .desc-panel .desc-text {
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--text);
+  }
+
+  /* Error */
+  .error-msg {
+    background: rgba(139,58,58,0.15);
+    border: 1px solid rgba(139,58,58,0.4);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #d4807a;
+    display: none;
+  }
+
+  .error-msg.visible { display: block; }
+
+  /* Instructions */
+  .instructions {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+
+  .instructions h3 {
+    font-size: 12px;
+    color: var(--gold);
+    margin-bottom: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  .step {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .step-num {
+    background: var(--gold-dim);
+    color: var(--gold);
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  footer {
+    padding: 16px 20px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="logo-mark" viewBox="0 0 36 36">
+    <circle cx="18" cy="18" r="14" fill="none" stroke="#c9a84c" stroke-width="1" opacity="0.3"/>
+    <circle cx="18" cy="18" r="8" fill="none" stroke="#c9a84c" stroke-width="1.5" opacity="0.6"/>
+    <circle cx="18" cy="18" r="3" fill="#c9a84c"/>
+    <line x1="18" y1="4" x2="18" y2="12" stroke="#c9a84c" stroke-width="1" opacity="0.4"/>
+    <line x1="18" y1="24" x2="18" y2="32" stroke="#c9a84c" stroke-width="1" opacity="0.4"/>
+    <line x1="4" y1="18" x2="12" y2="18" stroke="#c9a84c" stroke-width="1" opacity="0.4"/>
+    <line x1="24" y1="18" x2="32" y2="18" stroke="#c9a84c" stroke-width="1" opacity="0.4"/>
+  </svg>
+  <div class="title-block">
+    <h1>اللوحة المتراكبة</h1>
+    <p>نموذج رصد كمي تشكيلي تجريبي</p>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Viewport -->
+  <div class="viewport" id="viewport">
+    <video id="videoEl" autoplay playsinline muted></video>
+    <canvas id="overlayCanvas"></canvas>
+    <div class="scan-line"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div class="state-badge" id="stateBadge">في انتظار الرصد</div>
+    <div class="overlay-result" id="overlayResult">
+      <div class="overlay-image-container" id="overlayImageContainer">
+        <img id="generatedImg" class="generated-overlay" src="" alt=""/>
+      </div>
+    </div>
+    <div class="no-camera" id="noCameraMsg">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      <span>اضغط "تفعيل الكاميرا" للبدء</span>
+    </div>
+  </div>
+
+  <!-- Meta -->
+  <div class="meta-row">
+    <div class="meta-card">
+      <div class="val" id="obsCount">٠</div>
+      <div class="lbl">عدد مرات الرصد</div>
+    </div>
+    <div class="meta-card">
+      <div class="val" id="stateCount">∞</div>
+      <div class="lbl">حالات محتملة</div>
+    </div>
+    <div class="meta-card">
+      <div class="val" id="uniqueVal">١٠٠٪</div>
+      <div class="lbl">فرادة الرصد</div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-indicator" id="loadingIndicator">
+    <div class="spinner"></div>
+    <span>انهيار الدالة الموجية... جارٍ توليد الحالة</span>
+  </div>
+
+  <!-- Error -->
+  <div class="error-msg" id="errorMsg"></div>
+
+  <!-- State info -->
+  <div class="state-panel" id="statePanel">
+    <div class="state-title" id="statePanelTitle"></div>
+    <div id="statePanelDesc"></div>
+    <div class="state-seed" id="stateSeed"></div>
+  </div>
+
+  <!-- Description -->
+  <div class="desc-panel" id="descPanel">
+    <div class="desc-label">وصف الحالة الكمية المرصودة</div>
+    <div class="desc-text" id="descText"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn-primary" id="cameraBtn" onclick="toggleCamera()">تفعيل الكاميرا</button>
+    <button class="btn-primary" id="captureBtn" onclick="captureAndGenerate()" disabled>
+      ارصد اللوحة
+    </button>
+    <button class="btn-secondary" id="resetBtn" onclick="resetOverlay()" style="display:none">
+      إزالة الطبقة الرقمية
+    </button>
+  </div>
+
+  <!-- Instructions -->
+  <div class="instructions">
+    <h3>كيف يعمل النموذج</h3>
+    <div class="step">
+      <div class="step-num">١</div>
+      <span>فعّل الكاميرا ووجّهها نحو أي لوحة أو صورة أمامك</span>
+    </div>
+    <div class="step">
+      <div class="step-num">٢</div>
+      <span>اضغط "ارصد اللوحة" — لحظة الرصد تُنهار حالات التراكب</span>
+    </div>
+    <div class="step">
+      <div class="step-num">٣</div>
+      <span>تظهر طبقة بصرية رقمية فريدة فوق اللوحة — لن تتكرر أبداً</span>
+    </div>
+    <div class="step">
+      <div class="step-num">٤</div>
+      <span>كل رصد جديد ينتج حالة مختلفة تماماً — المراقب يغير المرصود</span>
+    </div>
+  </div>
+
+</div>
+
+<footer>نموذج تجريبي · اللوحة المتراكبة · مستلهم من مبدأ الرصد الكمي</footer>
+
+<script>
+let stream = null;
+let cameraActive = false;
+let observationCount = 0;
+const video = document.getElementById('videoEl');
+const canvas = document.getElementById('overlayCanvas');
+const ctx = canvas.getContext('2d');
+
+const arabicNumerals = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+function toArabicNum(n) {
+  return String(n).split('').map(d => arabicNumerals[parseInt(d)] || d).join('');
+}
+
+async function toggleCamera() {
+  if (cameraActive) {
+    stopCamera();
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } }
+    });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('noCameraMsg').style.display = 'none';
+    cameraActive = true;
+    document.getElementById('cameraBtn').textContent = 'إيقاف الكاميرا';
+    document.getElementById('captureBtn').disabled = false;
+    document.getElementById('stateBadge').textContent = 'الكاميرا نشطة — جاهز للرصد';
+    document.getElementById('viewport').style.borderColor = 'rgba(201,168,76,0.4)';
+  } catch(e) {
+    showError('تعذّر الوصول إلى الكاميرا. تأكد من منح الإذن.');
+  }
+}
+
+function stopCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  cameraActive = false;
+  document.getElementById('cameraBtn').textContent = 'تفعيل الكاميرا';
+  document.getElementById('captureBtn').disabled = true;
+  document.getElementById('noCameraMsg').style.display = 'flex';
+  document.getElementById('stateBadge').textContent = 'في انتظار الرصد';
+  document.getElementById('viewport').style.borderColor = '';
+}
+
+function captureFrame() {
+  const w = video.videoWidth || 640;
+  const h = video.videoHeight || 480;
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = w; tmpCanvas.height = h;
+  tmpCanvas.getContext('2d').drawImage(video, 0, 0, w, h);
+  return tmpCanvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+}
+
+async function captureAndGenerate() {
+  if (!cameraActive) return;
+
+  setLoading(true);
+  clearOverlay();
+  document.getElementById('viewport').classList.add('scanning');
+  document.getElementById('stateBadge').textContent = 'جارٍ رصد اللوحة...';
+  document.getElementById('captureBtn').disabled = true;
+  document.getElementById('resetBtn').style.display = 'none';
+  hideError();
+
+  const frameB64 = captureFrame();
+  const seed = generateSeed();
+
+  try {
+    // Step 1: Get description from Claude vision
+    const descResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: `أنت نظام رصد كمي فني. عند رصد لوحة، تولّد "حالة كمية" فريدة مستلهمة من محتواها.
+        
+        استجب بـ JSON فقط بهذا الشكل بالضبط (بدون أي نص آخر أو markdown):
+        {
+          "stateName": "اسم الحالة الكمية (3-5 كلمات عربية شاعرية)",
+          "description": "وصف بصري شاعري للطبقة الرقمية التي ستظهر فوق اللوحة (جملتان)",
+          "imagePrompt": "detailed English prompt for an artistic digital overlay image to appear on top of a painting. Abstract, ethereal, translucent visual elements. Style: digital art overlay, semi-transparent, glowing particles. Seed:${seed}",
+          "colorMood": "warm|cool|neutral|mystical",
+          "quantumState": "رقم الحالة الكمية من 0 إلى 7"
+        }`,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: frameB64 } },
+            { type: 'text', text: `ارصد هذه اللوحة وولّد حالتها الكمية الفريدة. البذرة العشوائية: ${seed}` }
+          ]
+        }]
+      })
+    });
+
+    const descData = await descResponse.json();
+    const rawText = descData.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    const cleanText = rawText.replace(/```json|```/g, '').trim();
+    const stateData = JSON.parse(cleanText);
+
+    observationCount++;
+    updateCounters();
+
+    // Step 2: Generate visual overlay using canvas
+    await renderQuantumOverlay(stateData, seed);
+
+    // Show info
+    document.getElementById('statePanel').classList.add('visible');
+    document.getElementById('statePanelTitle').textContent = stateData.stateName;
+    document.getElementById('statePanelDesc').textContent = stateData.description;
+    document.getElementById('stateSeed').textContent = `seed: ${seed} | state: |ψ${stateData.quantumState}⟩`;
+
+    document.getElementById('descPanel').classList.add('visible');
+    document.getElementById('descText').textContent = stateData.description;
+
+    document.getElementById('stateBadge').textContent = `الحالة: ${stateData.stateName}`;
+    document.getElementById('resetBtn').style.display = 'block';
+
+  } catch(e) {
+    showError('حدث خطأ في توليد الحالة الكمية. حاول مجدداً.');
+    document.getElementById('stateBadge').textContent = 'فشل الرصد';
+  } finally {
+    setLoading(false);
+    document.getElementById('viewport').classList.remove('scanning');
+    document.getElementById('captureBtn').disabled = false;
+  }
+}
+
+async function renderQuantumOverlay(stateData, seed) {
+  // Resize canvas to match video
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  const rng = seededRandom(seed);
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Color palette based on mood
+  const palettes = {
+    warm: ['rgba(201,168,76,', 'rgba(180,80,40,', 'rgba(220,140,60,'],
+    cool: ['rgba(60,120,200,', 'rgba(80,180,220,', 'rgba(40,80,160,'],
+    neutral: ['rgba(180,180,200,', 'rgba(220,220,240,', 'rgba(140,140,160,'],
+    mystical: ['rgba(120,60,200,', 'rgba(180,80,200,', 'rgba(60,160,200,']
+  };
+  const palette = palettes[stateData.colorMood] || palettes.mystical;
+
+  const stateNum = parseInt(stateData.quantumState) || 0;
+
+  // Draw based on quantum state
+  switch(stateNum % 8) {
+    case 0: drawParticleField(w, h, palette, rng); break;
+    case 1: drawWaveInterference(w, h, palette, rng); break;
+    case 2: drawOrbitalPaths(w, h, palette, rng); break;
+    case 3: drawQuantumTunneling(w, h, palette, rng); break;
+    case 4: drawEntangledNodes(w, h, palette, rng); break;
+    case 5: drawProbabilityCloud(w, h, palette, rng); break;
+    case 6: drawSuperpositionLayers(w, h, palette, rng); break;
+    case 7: drawCollapse(w, h, palette, rng); break;
+    default: drawParticleField(w, h, palette, rng);
+  }
+
+  // Show canvas overlay
+  document.getElementById('overlayImageContainer').classList.add('visible');
+  document.getElementById('overlayResult').classList.add('active');
+}
+
+// Quantum visual patterns
+function drawParticleField(w, h, p, rng) {
+  for(let i = 0; i < 120; i++) {
+    const x = rng() * w, y = rng() * h;
+    const r = rng() * 4 + 1;
+    const a = rng() * 0.7 + 0.1;
+    const c = p[Math.floor(rng() * p.length)];
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = c + a + ')';
+    ctx.fill();
+    if(rng() > 0.7) {
+      ctx.beginPath();
+      ctx.arc(x, y, r * 3, 0, Math.PI * 2);
+      ctx.strokeStyle = c + '0.15)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawWaveInterference(w, h, p, rng) {
+  const freq = rng() * 0.04 + 0.02;
+  const phase = rng() * Math.PI * 2;
+  for(let x = 0; x < w; x += 3) {
+    for(let k = 0; k < 3; k++) {
+      const amp = h * 0.15 * (k + 1) / 3;
+      const y = h/2 + Math.sin(x * freq + phase + k * 1.2) * amp;
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = p[k % p.length] + (0.4 - k * 0.1) + ')';
+      ctx.fill();
+    }
+  }
+}
+
+function drawOrbitalPaths(w, h, p, rng) {
+  const cx = w/2 + (rng()-0.5)*w*0.3;
+  const cy = h/2 + (rng()-0.5)*h*0.3;
+  for(let o = 0; o < 4; o++) {
+    const rx = 40 + o * 35 + rng() * 20;
+    const ry = 25 + o * 22 + rng() * 15;
+    const angle = rng() * Math.PI;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = p[o % p.length] + '0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Electron
+    const ea = rng() * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(Math.cos(ea)*rx, Math.sin(ea)*ry, 3, 0, Math.PI*2);
+    ctx.fillStyle = p[o % p.length] + '0.8)';
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawQuantumTunneling(w, h, p, rng) {
+  // Barrier
+  const bx = w * (0.3 + rng() * 0.4);
+  ctx.fillStyle = p[0] + '0.08)';
+  ctx.fillRect(bx - 15, 0, 30, h);
+  // Particles tunneling
+  for(let i = 0; i < 40; i++) {
+    const x = rng() * w;
+    const y = rng() * h;
+    const a = x > bx ? 0.6 : 0.2;
+    ctx.beginPath();
+    ctx.arc(x, y, 2 + rng()*2, 0, Math.PI*2);
+    ctx.fillStyle = p[i%p.length] + a + ')';
+    ctx.fill();
+  }
+}
+
+function drawEntangledNodes(w, h, p, rng) {
+  const nodes = Array.from({length: 8}, () => ({ x: rng()*w, y: rng()*h }));
+  // Connect pairs
+  for(let i = 0; i < nodes.length; i += 2) {
+    if(nodes[i+1]) {
+      const grad = ctx.createLinearGradient(nodes[i].x, nodes[i].y, nodes[i+1].x, nodes[i+1].y);
+      grad.addColorStop(0, p[0] + '0.5)');
+      grad.addColorStop(1, p[1] + '0.5)');
+      ctx.beginPath();
+      ctx.moveTo(nodes[i].x, nodes[i].y);
+      ctx.lineTo(nodes[i+1].x, nodes[i+1].y);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(nodes[i].x, nodes[i].y, 5, 0, Math.PI*2);
+    ctx.fillStyle = p[i%p.length] + '0.7)';
+    ctx.fill();
+  }
+}
+
+function drawProbabilityCloud(w, h, p, rng) {
+  const cx = w/2, cy = h/2;
+  for(let i = 0; i < 200; i++) {
+    const angle = rng() * Math.PI * 2;
+    const dist = Math.pow(rng(), 0.5) * Math.min(w,h) * 0.4;
+    const x = cx + Math.cos(angle) * dist;
+    const y = cy + Math.sin(angle) * dist;
+    const a = (1 - dist/(Math.min(w,h)*0.4)) * 0.4;
+    ctx.beginPath();
+    ctx.arc(x, y, 1.5, 0, Math.PI*2);
+    ctx.fillStyle = p[i%p.length] + Math.max(0.05, a) + ')';
+    ctx.fill();
+  }
+}
+
+function drawSuperpositionLayers(w, h, p, rng) {
+  for(let l = 0; l < 3; l++) {
+    const offsetX = (rng()-0.5) * 80;
+    const offsetY = (rng()-0.5) * 80;
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.globalAlpha = 0.25;
+    drawParticleField(w, h, [p[l]], rng);
+    ctx.restore();
+  }
+}
+
+function drawCollapse(w, h, p, rng) {
+  // Many scattered → one concentrated
+  for(let i = 0; i < 60; i++) {
+    const x = rng()*w, y = rng()*h;
+    ctx.beginPath();
+    ctx.arc(x, y, 1, 0, Math.PI*2);
+    ctx.fillStyle = p[0] + '0.15)';
+    ctx.fill();
+  }
+  const cx = w/2 + (rng()-0.5)*w*0.2;
+  const cy = h/2 + (rng()-0.5)*h*0.2;
+  for(let r = 30; r > 0; r -= 5) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.strokeStyle = p[1] + (0.5 - r/60) + ')';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI*2);
+  ctx.fillStyle = p[2] + '0.9)';
+  ctx.fill();
+}
+
+// Seeded random for reproducibility within session but uniqueness across
+function seededRandom(seed) {
+  let s = parseInt(seed.replace(/\D/g,'').slice(0,9)) || 12345;
+  return function() {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 4294967296;
+  };
+}
+
+function generateSeed() {
+  const t = Date.now();
+  const r = Math.random().toString(36).slice(2,8);
+  return `${t}-${r}`;
+}
+
+function clearOverlay() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('overlayImageContainer').classList.remove('visible');
+  document.getElementById('overlayResult').classList.remove('active');
+  document.getElementById('statePanel').classList.remove('visible');
+  document.getElementById('descPanel').classList.remove('visible');
+}
+
+function resetOverlay() {
+  clearOverlay();
+  document.getElementById('resetBtn').style.display = 'none';
+  document.getElementById('stateBadge').textContent = 'الكاميرا نشطة — جاهز للرصد';
+}
+
+function updateCounters() {
+  document.getElementById('obsCount').textContent = toArabicNum(observationCount);
+}
+
+function setLoading(on) {
+  document.getElementById('loadingIndicator').classList.toggle('visible', on);
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+function hideError() {
+  document.getElementById('errorMsg').classList.remove('visible');
+}
+</script>
+</body>
+</html>
